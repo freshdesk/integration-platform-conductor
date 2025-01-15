@@ -34,7 +34,8 @@ public class ExecutionLockService {
     private final long lockLeaseTime;
     private final long lockTimeToTry;
 
-    public ExecutionLockService(ConductorProperties properties, @Qualifier("provideLock") Lock lock) {
+    public ExecutionLockService(
+            ConductorProperties properties, @Qualifier("provideLock") Lock lock) {
         this.properties = properties;
         this.lock = lock;
         this.lockLeaseTime = properties.getLockLeaseTime().toMillis();

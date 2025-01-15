@@ -29,7 +29,9 @@ import com.netflix.conductor.redislock.lock.RedisLock;
 
 @Configuration
 @EnableConfigurationProperties(RedisLockProperties.class)
-@ConditionalOnProperty(name = "conductor.workflow-scylla-execution-lock.enabled", havingValue = "true")
+@ConditionalOnProperty(
+        name = "conductor.workflow-scylla-execution-lock.enabled",
+        havingValue = "true")
 public class RedisLockConfiguration {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RedisLockConfiguration.class);

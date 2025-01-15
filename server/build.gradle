@@ -77,7 +77,6 @@ dependencies {
 
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${revSpringDoc}"
 
-
     runtimeOnly "org.glassfish.jaxb:jaxb-runtime:${revJAXB}"
 
     testImplementation project(':conductor-rest')

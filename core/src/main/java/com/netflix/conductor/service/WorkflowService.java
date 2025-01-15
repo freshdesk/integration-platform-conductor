@@ -131,6 +131,18 @@ public interface WorkflowService {
             boolean includeTasks);
 
     /**
+     * Gets the workflow by workflow Id.
+     *
+     * @param workflowId Id of the workflow.
+     * @param includeTasks Includes tasks associated with workflow.
+     * @return an instance of {@link Workflow}
+     */
+    Workflow getExecutionStatus(
+            @NotEmpty(message = "WorkflowId cannot be null or empty.") String accountId,
+            @NotEmpty(message = "WorkflowId cannot be null or empty.") String workflowId,
+            boolean includeTasks);
+
+    /**
      * Removes the workflow from the system.
      *
      * @param workflowId WorkflowID of the workflow you want to remove from system.

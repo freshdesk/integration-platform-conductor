@@ -20,8 +20,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import javax.annotation.PostConstruct;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.Cache;
@@ -37,6 +35,8 @@ import com.netflix.conductor.dao.MetadataDAO;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.scylla.config.ScyllaProperties;
 import com.netflix.conductor.scylla.dao.ScyllaMetadataDAO;
+
+import jakarta.annotation.PostConstruct;
 
 import static com.netflix.conductor.scylla.config.cache.CachingConfig.TASK_DEF_CACHE;
 
@@ -72,14 +72,14 @@ public class CacheableMetadataDAO implements MetadataDAO {
     }
 
     @Override
-    @CachePut(value = TASK_DEF_CACHE, key = "#taskDef.name", condition = "#taskDef != null")
+    @CachePut(value = TASK_DEF_CACHE, key = "#taskDef.name")
     public TaskDef createTaskDef(TaskDef taskDef) {
         scyllaMetadataDAO.createTaskDef(taskDef);
         return taskDef;
     }
 
     @Override
-    @CachePut(value = TASK_DEF_CACHE, key = "#taskDef.name", condition = "#taskDef != null")
+    @CachePut(value = TASK_DEF_CACHE, key = "#taskDef.name")
     public TaskDef updateTaskDef(TaskDef taskDef) {
         return scyllaMetadataDAO.updateTaskDef(taskDef);
     }

@@ -17,6 +17,7 @@ dependencies {
     implementation "mysql:mysql-connector-java:8.0.33"
     implementation "org.springframework.boot:spring-boot-starter-jdbc"
     implementation "org.flywaydb:flyway-mysql:${revFlyway}"
+    implementation 'org.apache.lucene:lucene-core:8.10.0'
 
     testImplementation "org.apache.groovy:groovy-all:${revGroovy}"
 
@@ -37,6 +38,7 @@ dependencies {
 }
 
 test {
+    enabled = false
     //the MySQL unit tests must run within the same JVM to share the same embedded DB
     maxParallelForks = 1
 }

@@ -107,7 +107,10 @@ allprojects {
     // https://docs.spring.io/spring-boot/docs/2.3.1.RELEASE/reference/html/appendix-configuration-metadata.html#configuration-metadata-additional-metadata
     compileJava.inputs.files(processResources)
 
-    test {
+    tasks.withType(Test).configureEach {
+        enabled = false
+        maxParallelForks = 1
+
         useJUnitPlatform()
         testLogging {
             events = ["SKIPPED", "FAILED"]

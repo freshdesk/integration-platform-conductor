@@ -16,6 +16,9 @@ WORKDIR /integration-platform-conductor
 # Build the server on run
 RUN ./gradlew build -x test --stacktrace
 
+# Debugging: List files in the build/libs directory to verify the .jar file
+RUN echo "Checking contents of build/libs:" && ls -l /integration-platform-conductor/server/build/libs/
+
 # ===========================================================================================================
 # 1. Bin stage
 # ===========================================================================================================

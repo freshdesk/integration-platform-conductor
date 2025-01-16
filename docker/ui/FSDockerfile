@@ -1,8 +1,8 @@
 #
 # conductor:ui - Netflix Conductor UI
 #
-FROM public.ecr.aws/i1i0w6p5/node:18.17.1
-LABEL maintainer="Netflix OSS <conductor@netflix.com>"
+FROM public.ecr.aws/i1i0w6p5/node:20
+LABEL maintainer="Orkes OSS <oss@orkes.io>"
 
 RUN apt update
 # Install the required packages for the node build

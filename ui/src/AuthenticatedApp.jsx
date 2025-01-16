@@ -5,7 +5,22 @@ import axios from 'axios';
 import App from './App';
 
 function AuthenticatedApp() {
-    const profileFromStorage = localStorage.getItem('conductorUserProfile');
+    const logOut = () => {
+        console.log("Log out called, but authentication is disabled.");
+    };
+
+    // Provide a mock profile or null as needed for App component
+    const mockProfile = {
+        name: "Guest User",
+        email: "guest@example.com",
+    };
+
+    return (
+        <div>
+            <App profile={mockProfile} logOut={logOut} />
+        </div>
+    );
+    /*const profileFromStorage = localStorage.getItem('conductorUserProfile');
     const [ profile, setProfile ] = useState(JSON.parse(profileFromStorage));
     const successfulLogin = (profile) => {
         setProfile(profile);
@@ -25,6 +40,6 @@ function AuthenticatedApp() {
                 <Login onSuccess={successfulLogin} />
             )}
         </div>
-    );
+    );*/
 }
 export default AuthenticatedApp;

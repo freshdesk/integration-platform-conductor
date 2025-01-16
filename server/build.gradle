@@ -75,6 +75,9 @@ dependencies {
     	exclude group: 'com.netflix.conductor', module: 'conductor-core'
     }
 
+    implementation "io.opentelemetry:opentelemetry-extension-annotations:1.18.0"
+    implementation "io.opentelemetry:opentelemetry-api:1.35.0"
+
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${revSpringDoc}"
 
     runtimeOnly "org.glassfish.jaxb:jaxb-runtime:${revJAXB}"
@@ -86,6 +89,21 @@ dependencies {
     testImplementation "io.grpc:grpc-protobuf:${revGrpc}"
     testImplementation "io.grpc:grpc-stub:${revGrpc}"
 }
+
+configurations {
+    otelJAR
+}
+
+dependencies {
+    otelJAR "io.opentelemetry.javaagent:opentelemetry-javaagent:1.32.1"
+}
+
+task downloadOTELJAR(type: Copy) {
+    from configurations.otelJAR
+    into 'build/libs'
+}
+
+build.dependsOn downloadOTELJAR
 
 jar {
     enabled = true

@@ -25,7 +25,7 @@ RUN echo "Checking contents of build/libs:" && ls -l /integration-platform-condu
 FROM public.ecr.aws/amazoncorretto/amazoncorretto:17
 
 LABEL maintainer="Netflix OSS <conductor@netflix.com>"
-#ENV OPENTELEMETRY_JAR_FILE opentelemetry-javaagent-1.32.1.jar
+ENV OPENTELEMETRY_JAR_FILE opentelemetry-javaagent-1.32.1.jar
 
 # Make app folders
 RUN mkdir -p /app/config /app/logs /app/libs
@@ -38,8 +38,8 @@ COPY --from=builder /integration-platform-conductor/server/build/libs/conductor-
 
 # Required Packages
 RUN yum install -y procps shadow-utils mysql screen nc wget
-#RUN yum install python3-pip python3-wheel python3-devel gcc -y
-#RUN pip3 install scylla-cqlsh
+RUN yum install python3-pip python3-wheel python3-devel gcc -y
+RUN pip3 install scylla-cqlsh
 
 # This Jar is used for profiling with java-agent
 RUN wget https://github.com/grafana/pyroscope-java/releases/download/v0.14.0/pyroscope.jar -P /app/libs

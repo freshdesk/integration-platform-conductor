@@ -33,7 +33,7 @@ RUN mkdir -p /app/config /app/logs /app/libs
 # Copy the compiled output to new image
 COPY --from=builder /integration-platform-conductor/docker/server/bin /app
 COPY --from=builder /integration-platform-conductor/docker/server/config /app/config
-COPY --from=builder /integration-platform-conductor/server/build/libs/conductor-server-*-boot.jar /app/libs
+COPY --from=builder /integration-platform-conductor/server/build/libs/conductor-server*boot.jar /app/libs
 #COPY --from=builder /integration-platform-conductor/server/build/libs/$OPENTELEMETRY_JAR_FILE /app/libs
 
 # Required Packages

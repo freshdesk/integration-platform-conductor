@@ -10,8 +10,8 @@ FROM public.ecr.aws/amazoncorretto/amazoncorretto:17 AS builder
 LABEL maintainer="Netflix OSS <conductor@netflix.com>"
 
 # Copy the project directly onto the image
-COPY . /conductor
-WORKDIR /conductor
+COPY . /integration-platform-conductor
+WORKDIR /integration-platform-conductor
 
 # Build the server on run
 RUN ./gradlew build -x test --stacktrace
@@ -28,10 +28,10 @@ ENV OPENTELEMETRY_JAR_FILE opentelemetry-javaagent-1.32.1.jar
 RUN mkdir -p /app/config /app/logs /app/libs
 
 # Copy the compiled output to new image
-COPY --from=builder /conductor/docker/server/bin /app
-COPY --from=builder /conductor/docker/server/config /app/config
-COPY --from=builder /conductor/server/build/libs/conductor-server-*-boot.jar /app/libs
-COPY --from=builder /conductor/server/build/libs/$OPENTELEMETRY_JAR_FILE /app/libs
+COPY --from=builder /integration-platform-conductor/docker/server/bin /app
+COPY --from=builder /integration-platform-conductor/docker/server/config /app/config
+COPY --from=builder /integration-platform-conductor/server/build/libs/conductor-server-*-boot.jar /app/libs
+COPY --from=builder /integration-platform-conductor/server/build/libs/$OPENTELEMETRY_JAR_FILE /app/libs
 
 # Required Packages
 RUN yum install -y procps shadow-utils mysql screen nc wget

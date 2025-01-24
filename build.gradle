@@ -117,10 +117,6 @@ allprojects {
         }
     }
 
-    tasks.withType(Test) {
-        // Disable tests for all projects
-        enabled = false
-    }
     bootJar {
         enabled = false
     }

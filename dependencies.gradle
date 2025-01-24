@@ -69,5 +69,5 @@ ext {
     revStan = '2.2.3'
     revFlyway = '10.15.2'
     revScylla = '3.11.5.0'
-
+    revHibernateValidator = '6.2.5.Final'
 }

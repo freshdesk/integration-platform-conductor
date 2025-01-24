@@ -116,6 +116,7 @@ allprojects {
             showStandardStreams = false
         }
     }
+
     bootJar {
         enabled = false
     }

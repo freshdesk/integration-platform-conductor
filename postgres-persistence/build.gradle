@@ -34,7 +34,6 @@ dependencies {
 }
 
 test {
-    enabled = false
     //the SQL unit tests must run within the same JVM to share the same embedded DB
     maxParallelForks = 1
 }

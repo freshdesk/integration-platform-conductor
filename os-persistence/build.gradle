@@ -50,8 +50,3 @@ shadowJar {
     }
 }
 jar.dependsOn shadowJar
-test {
-    enabled = false
-    //the MySQL unit tests must run within the same JVM to share the same embedded DB
-    maxParallelForks = 1
-}

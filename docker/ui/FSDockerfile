@@ -1,28 +1,22 @@
 #
-# conductor:ui - Netflix Conductor UI
+# conductor:ui - Conductor UI
 #
-FROM public.ecr.aws/docker/library/node:20.18
+FROM node:20-alpine
 LABEL maintainer="Orkes OSS <oss@orkes.io>"
 
-RUN apt update
 # Install the required packages for the node build
 # to run on alpine
-# RUN apt install -y python3 py3-pip make g++
-
-# Required Packages
-RUN apt install -y procps screen default-mysql-client ncat
-
-RUN mkdir -p /app
+RUN apk update && apk add --no-cache python3 py3-pip make g++
 
 # A directory within the virtualized Docker environment
 # Becomes more relevant when using Docker Compose later
-WORKDIR /app
+WORKDIR /usr/src/app
 
 # Copies package.json to Docker environment in a separate layer as a performance optimization
 COPY ./ui/package.json ./
 
 # Installs all node packages. Cached unless package.json changes
-RUN yarn install --frozen-lockfile
+RUN yarn install && mkdir -p public && cp -r node_modules/monaco-editor public/
 
 # Copies everything else over to Docker environment
 # node_modules excluded in .dockerignore.
@@ -36,13 +30,7 @@ RUN chown -R deploy:conductor /app
 
 USER deploy:conductor
 
+# Include monaco sources into bundle (instead of using CDN)
 ENV REACT_APP_MONACO_EDITOR_USING_CDN=false
 
-ARG BUILD_ENV=production
-# Build for production if specified
-RUN if [ "$BUILD_ENV" = "production" ]; then yarn build; fi
-
-#CMD [ "yarn", "start" ]
-
-CMD [ "sh", "-c", "if [ \"$BUILD_ENV\" = \"production\" ]; then npx serve -s build; else yarn start; fi" ]
-
+CMD [ "yarn", "start" ]

@@ -725,16 +725,26 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
         }
 
         String workflowId = taskResult.getWorkflowInstanceId();
-        WorkflowModel workflowInstance = executionDAOFacade.getWorkflowModel(workflowId, false);
+        String shardId = (String) taskResult.getOutputData().get("shardId");
 
+        LOGGER.info(
+                "Inside updateTask to update task for shardId - {} workflowId - {} taskId - {}",
+                shardId,
+                workflowId,
+                taskResult.getTaskId());
+        WorkflowModel workflowInstance =
+                findWorkflowInstance(shardId, workflowId)
+                        .orElseThrow(
+                                () ->
+                                        new NotFoundException(
+                                                "Workflow not found for id: %s", workflowId));
         TaskModel task =
-                Optional.ofNullable(executionDAOFacade.getTaskModel(taskResult.getTaskId()))
+                findTask(shardId, workflowId, taskResult.getTaskId())
                         .orElseThrow(
                                 () ->
                                         new NotFoundException(
                                                 "No such task found by id: %s",
                                                 taskResult.getTaskId()));
-
         LOGGER.debug("Task: {} belonging to Workflow {} being updated", task, workflowInstance);
 
         String taskQueueName = QueueUtils.getQueueName(task);
@@ -886,6 +896,22 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
             decide(workflowId);
         }
         return task;
+    }
+
+    private Optional<WorkflowModel> findWorkflowInstance(String shardId, String workflowId) {
+        if (StringUtils.isNotEmpty(shardId)) {
+            return Optional.ofNullable(
+                    executionDAOFacade.getWorkflowModel(shardId, workflowId, false));
+        }
+        return Optional.ofNullable(executionDAOFacade.getWorkflowModel(workflowId, false));
+    }
+
+    private Optional<TaskModel> findTask(String shardId, String workflowId, String taskId) {
+        if (StringUtils.isNotEmpty(shardId)) {
+            return Optional.ofNullable(
+                    executionDAOFacade.getTaskModel(shardId, workflowId, taskId));
+        }
+        return Optional.ofNullable(executionDAOFacade.getTaskModel(taskId));
     }
 
     private void notifyTaskStatusListener(TaskModel task) {

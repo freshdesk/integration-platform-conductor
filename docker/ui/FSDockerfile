@@ -22,7 +22,7 @@ WORKDIR /app
 COPY ./ui/package.json ./
 
 # Installs all node packages. Cached unless package.json changes
-RUN yarn install
+RUN yarn install --frozen-lockfile
 
 # Copies everything else over to Docker environment
 # node_modules excluded in .dockerignore.
@@ -38,4 +38,11 @@ USER deploy:conductor
 
 ENV REACT_APP_MONACO_EDITOR_USING_CDN=false
 
-CMD [ "yarn", "start" ]
+ARG BUILD_ENV=production
+# Build for production if specified
+RUN if [ "$BUILD_ENV" = "production" ]; then yarn build; fi
+
+#CMD [ "yarn", "start" ]
+
+CMD [ "sh", "-c", "if [ \"$BUILD_ENV\" = \"production\" ]; then npx serve -s build; else yarn start; fi" ]
+

@@ -12,7 +12,6 @@
  */
 package com.netflix.conductor.core.reconciliation;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
@@ -111,10 +110,10 @@ public class WorkflowSweeper {
         long workflowOffsetTimeout =
                 workflowOffsetWithJitter(properties.getWorkflowOffsetTimeout().getSeconds());
         if (workflow != null) {
-            long startTime = Instant.now().toEpochMilli();
+            // long startTime = Instant.now().toEpochMilli();
             unack(workflow, workflowOffsetTimeout);
-            long endTime = Instant.now().toEpochMilli();
-            Monitors.recordUnackTime(workflow.getWorkflowName(), endTime - startTime);
+            // long endTime = Instant.now().toEpochMilli();
+            // Monitors.recordUnackTime(workflow.getWorkflowName(), endTime - startTime);
         } else {
             LOGGER.warn(
                     "Workflow with {} id can not be found. Attempting to unack using the id",

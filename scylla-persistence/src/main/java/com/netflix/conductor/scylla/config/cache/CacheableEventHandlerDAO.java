@@ -20,8 +20,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import javax.annotation.PostConstruct;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.Cache;
@@ -35,6 +33,8 @@ import com.netflix.conductor.dao.EventHandlerDAO;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.scylla.config.ScyllaProperties;
 import com.netflix.conductor.scylla.dao.ScyllaEventHandlerDAO;
+
+import jakarta.annotation.PostConstruct;
 
 import static com.netflix.conductor.scylla.config.cache.CachingConfig.EVENT_HANDLER_CACHE;
 
@@ -68,19 +68,13 @@ public class CacheableEventHandlerDAO implements EventHandlerDAO {
     }
 
     @Override
-    @CachePut(
-            value = EVENT_HANDLER_CACHE,
-            key = "#eventHandler.name",
-            condition = "#eventHandler != null")
+    @CachePut(value = EVENT_HANDLER_CACHE, key = "#eventHandler.name")
     public void addEventHandler(EventHandler eventHandler) {
         scyllaEventHandlerDAO.addEventHandler(eventHandler);
     }
 
     @Override
-    @CachePut(
-            value = EVENT_HANDLER_CACHE,
-            key = "#eventHandler.name",
-            condition = "#eventHandler != null")
+    @CachePut(value = EVENT_HANDLER_CACHE, key = "#eventHandler.name")
     public void updateEventHandler(EventHandler eventHandler) {
         scyllaEventHandlerDAO.updateEventHandler(eventHandler);
     }

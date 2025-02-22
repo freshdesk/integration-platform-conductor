@@ -81,6 +81,15 @@ public interface ExecutionDAO {
     TaskModel getTask(String taskId);
 
     /**
+     * @param shardId shard id to which task belongs
+     * @param taskId Task instance id
+     * @return Task
+     */
+    default TaskModel getTask(String shardId, String workflowId, String taskId) {
+        return null;
+    }
+
+    /**
      * @param taskIds Task instance ids
      * @return List of tasks
      */
@@ -144,6 +153,18 @@ public interface ExecutionDAO {
      * @return Workflow instance details
      */
     WorkflowModel getWorkflow(String workflowId, boolean includeTasks);
+
+    /**
+     * @param accountId to which workflow belongs
+     * @param workflowId workflow instance id
+     * @param includeTasks if set, includes the tasks (pending and completed) sorted by Task
+     *     Sequence number in Workflow.
+     * @return Workflow instance details
+     */
+    default WorkflowModel getWorkflow(String accountId, String workflowId, boolean includeTasks) {
+        throw new UnsupportedOperationException(
+                "This method is not implemented in RedisExecutionDao. Please use ExecutionDAOFacade instead.");
+    }
 
     /**
      * @param workflowName name of the workflow

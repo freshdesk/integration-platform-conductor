@@ -19,7 +19,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.netflix.conductor.core.exception.NonTransientException;
-import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.scylla.config.ScyllaProperties;
 
 import com.datastax.driver.core.DataType;
@@ -29,7 +28,40 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 
-import static com.netflix.conductor.scylla.util.Constants.*;
+import static com.netflix.conductor.scylla.util.Constants.ENTITY_KEY;
+import static com.netflix.conductor.scylla.util.Constants.EVENT_EXECUTION_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.EVENT_HANDLER_KEY;
+import static com.netflix.conductor.scylla.util.Constants.EVENT_HANDLER_NAME_KEY;
+import static com.netflix.conductor.scylla.util.Constants.HANDLERS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.MESSAGE_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.PAYLOAD_KEY;
+import static com.netflix.conductor.scylla.util.Constants.SHARD_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_EVENT_EXECUTIONS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_EVENT_HANDLERS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_DEFS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_DEF_LIMIT;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_IN_PROGRESS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_IN_PROGRESS_V2;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_LOOKUP;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOWS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOW_DEFS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOW_DEFS_INDEX;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOW_LOOKUP;
+import static com.netflix.conductor.scylla.util.Constants.TASK_DEFINITION_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_DEFS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_DEF_NAME_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_IN_PROG_STATUS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TOTAL_PARTITIONS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TOTAL_TASKS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.VERSION;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEFINITION_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_INDEX_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_INDEX_VALUE;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_VERSION_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_VERSION_KEY;
 
 /**
  * Creates the keyspace and tables.
@@ -100,10 +132,11 @@ public abstract class ScyllaBaseDAO {
                 session.execute(getCreateWorkflowDefsTableStatement());
                 session.execute(getCreateWorkflowDefsIndexTableStatement());
                 session.execute(getCreateTaskDefsTableStatement());
-                session.execute(getCreatePollDataTableStatement());
                 // Added task_in_progress
                 session.execute(getCreateTaskInProgressTableStatement());
                 // Added workflow_lookup
+                // Added task_in_progress_v2
+                session.execute(getCreateTaskInProgressTableV2Statement());
                 session.execute(getCreateWorkflowLookupTableStatement());
                 session.execute(getCreateEventHandlersTableStatement());
                 session.execute(getCreateEventExecutionsTableStatement());
@@ -201,16 +234,6 @@ public abstract class ScyllaBaseDAO {
                 .getQueryString();
     }
 
-    private String getCreatePollDataTableStatement() {
-        return SchemaBuilder.createTable(properties.getKeyspace(), TABLE_POLL_DATA)
-                .ifNotExists()
-                .addPartitionKey(TASK_DEF_NAME_KEY, DataType.text())
-                .addClusteringColumn(DOMAIN_KEY, DataType.text())
-                .addColumn(WORKER_ID_KEY, DataType.text())
-                .addColumn(LAST_POLL_TIME_KEY, DataType.bigint())
-                .getQueryString();
-    }
-
     /**
      * @return cql statement to create task_in_progress table for tasks stats identification
      */
@@ -219,6 +242,19 @@ public abstract class ScyllaBaseDAO {
                 .ifNotExists()
                 .addPartitionKey(TASK_DEF_NAME_KEY, DataType.text())
                 .addClusteringColumn(TASK_ID_KEY, DataType.uuid())
+                .addColumn(WORKFLOW_ID_KEY, DataType.uuid())
+                .addColumn(TASK_IN_PROG_STATUS_KEY, DataType.cboolean())
+                .getQueryString();
+    }
+
+    /**
+     * @return cql statement to create task_in_progress table for tasks stats identification
+     */
+    private String getCreateTaskInProgressTableV2Statement() {
+        return SchemaBuilder.createTable(properties.getKeyspace(), TABLE_TASK_IN_PROGRESS_V2)
+                .ifNotExists()
+                .addPartitionKey(TASK_DEF_NAME_KEY, DataType.text())
+                .addPartitionKey(TASK_ID_KEY, DataType.uuid())
                 .addColumn(WORKFLOW_ID_KEY, DataType.uuid())
                 .addColumn(TASK_IN_PROG_STATUS_KEY, DataType.cboolean())
                 .getQueryString();
@@ -260,20 +296,20 @@ public abstract class ScyllaBaseDAO {
     }
 
     void recordCassandraDaoRequests(String action) {
-        recordCassandraDaoRequests(action, "n/a", "n/a");
+        // recordCassandraDaoRequests(action, "n/a", "n/a");
     }
 
     void recordCassandraDaoRequests(String action, String taskType, String workflowType) {
-        Monitors.recordDaoRequests(DAO_NAME, action, taskType, workflowType);
+        // Monitors.recordDaoRequests(DAO_NAME, action, taskType, workflowType);
     }
 
     void recordCassandraDaoEventRequests(String action, String event) {
-        Monitors.recordDaoEventRequests(DAO_NAME, action, event);
+        // Monitors.recordDaoEventRequests(DAO_NAME, action, event);
     }
 
     void recordCassandraDaoPayloadSize(
             String action, int size, String taskType, String workflowType) {
-        Monitors.recordDaoPayloadSize(DAO_NAME, action, taskType, workflowType, size);
+        // Monitors.recordDaoPayloadSize(DAO_NAME, action, taskType, workflowType, size);
     }
 
     static class WorkflowMetadata {

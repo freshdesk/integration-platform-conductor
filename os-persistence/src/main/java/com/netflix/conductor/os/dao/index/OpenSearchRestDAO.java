@@ -230,12 +230,17 @@ public class OpenSearchRestDAO extends OpenSearchBaseDAO implements IndexDAO {
     @Override
     @PostConstruct
     public void setup() throws Exception {
-        waitForHealthyCluster();
+        try {
+            waitForHealthyCluster();
 
-        if (properties.isAutoIndexManagementEnabled()) {
-            createIndexesTemplates();
-            createWorkflowIndex();
-            createTaskIndex();
+            if (properties.isAutoIndexManagementEnabled()) {
+                createIndexesTemplates();
+                createWorkflowIndex();
+                createTaskIndex();
+            }
+        } catch (Exception e) {
+            logger.error("Error while initializing OpenSearchRestDAO: ", e);
+            throw e;
         }
     }
 

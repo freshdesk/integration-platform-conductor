@@ -144,8 +144,8 @@ public class OpenSearchRestDAO extends OpenSearchBaseDAO implements IndexDAO {
             this.clusterHealthColor = properties.getClusterHealthColor();
             this.bulkRequests = new ConcurrentHashMap<>();
             this.indexBatchSize = properties.getIndexBatchSize();
-            this.asyncBufferFlushTimeout = (int) properties.getAsyncBufferFlushTimeout()
-                .getSeconds();
+            this.asyncBufferFlushTimeout =
+                    (int) properties.getAsyncBufferFlushTimeout().getSeconds();
             this.properties = properties;
 
             this.indexPrefix = properties.getIndexPrefix();
@@ -160,19 +160,19 @@ public class OpenSearchRestDAO extends OpenSearchBaseDAO implements IndexDAO {
 
             // Set up a workerpool for performing async operations.
             this.executorService =
-                new ThreadPoolExecutor(
-                    CORE_POOL_SIZE,
-                    maximumPoolSize,
-                    KEEP_ALIVE_TIME,
-                    TimeUnit.MINUTES,
-                    new LinkedBlockingQueue<>(workerQueueSize),
-                    (runnable, executor) -> {
-                        logger.warn(
-                            "Request  {} to async dao discarded in executor {}",
-                            runnable,
-                            executor);
-                        Monitors.recordDiscardedIndexingCount("indexQueue");
-                    });
+                    new ThreadPoolExecutor(
+                            CORE_POOL_SIZE,
+                            maximumPoolSize,
+                            KEEP_ALIVE_TIME,
+                            TimeUnit.MINUTES,
+                            new LinkedBlockingQueue<>(workerQueueSize),
+                            (runnable, executor) -> {
+                                logger.warn(
+                                        "Request  {} to async dao discarded in executor {}",
+                                        runnable,
+                                        executor);
+                                Monitors.recordDiscardedIndexingCount("indexQueue");
+                            });
 
             // Set up a workerpool for performing async operations for task_logs, event_executions,
             // message
@@ -180,24 +180,24 @@ public class OpenSearchRestDAO extends OpenSearchBaseDAO implements IndexDAO {
             maximumPoolSize = 2;
             long keepAliveTime = 30L;
             this.logExecutorService =
-                new ThreadPoolExecutor(
-                    corePoolSize,
-                    maximumPoolSize,
-                    keepAliveTime,
-                    TimeUnit.SECONDS,
-                    new LinkedBlockingQueue<>(workerQueueSize),
-                    (runnable, executor) -> {
-                        logger.warn(
-                            "Request {} to async log dao discarded in executor {}",
-                            runnable,
-                            executor);
-                        Monitors.recordDiscardedIndexingCount("logQueue");
-                    });
+                    new ThreadPoolExecutor(
+                            corePoolSize,
+                            maximumPoolSize,
+                            keepAliveTime,
+                            TimeUnit.SECONDS,
+                            new LinkedBlockingQueue<>(workerQueueSize),
+                            (runnable, executor) -> {
+                                logger.warn(
+                                        "Request {} to async log dao discarded in executor {}",
+                                        runnable,
+                                        executor);
+                                Monitors.recordDiscardedIndexingCount("logQueue");
+                            });
 
             Executors.newSingleThreadScheduledExecutor()
-                .scheduleAtFixedRate(this::flushBulkRequests, 60, 30, TimeUnit.SECONDS);
+                    .scheduleAtFixedRate(this::flushBulkRequests, 60, 30, TimeUnit.SECONDS);
             this.retryTemplate = retryTemplate;
-        } catch(Exception e) {
+        } catch (Exception e) {
             logger.error("OpenSearch Initialization Failed: ", e);
             throw e;
         }

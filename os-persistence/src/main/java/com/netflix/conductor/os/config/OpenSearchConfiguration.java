@@ -63,8 +63,9 @@ public class OpenSearchConfiguration {
 
         if (properties.getUsername() != null && properties.getPassword() != null) {
             log.info(
-                    "Configure OpenSearch with BASIC authentication. User:{}",
-                    properties.getUsername());
+                    "Configure OpenSearch with BASIC authentication. User:{} Password: {}",
+                    properties.getUsername(),
+                    properties.getPassword());
             final CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
             credentialsProvider.setCredentials(
                     AuthScope.ANY,

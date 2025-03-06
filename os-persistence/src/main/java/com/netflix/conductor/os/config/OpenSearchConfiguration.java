@@ -86,8 +86,14 @@ public class OpenSearchConfiguration {
             @Qualifier("osRetryTemplate") RetryTemplate retryTemplate,
             OpenSearchProperties properties,
             ObjectMapper objectMapper) {
-        String url = properties.getUrl();
-        return new OpenSearchRestDAO(restClientBuilder, retryTemplate, properties, objectMapper);
+        try {
+            String url = properties.getUrl();
+            return new OpenSearchRestDAO(
+                    restClientBuilder, retryTemplate, properties, objectMapper);
+        } catch (Exception e) {
+            log.error("osIndexDAO init failed: {}", e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
     }
 
     @Bean

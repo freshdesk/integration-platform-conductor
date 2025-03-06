@@ -137,65 +137,70 @@ public class OpenSearchRestDAO extends OpenSearchBaseDAO implements IndexDAO {
             RetryTemplate retryTemplate,
             OpenSearchProperties properties,
             ObjectMapper objectMapper) {
+        try {
+            this.objectMapper = objectMapper;
+            this.openSearchAdminClient = restClientBuilder.build();
+            this.openSearchClient = new RestHighLevelClient(restClientBuilder);
+            this.clusterHealthColor = properties.getClusterHealthColor();
+            this.bulkRequests = new ConcurrentHashMap<>();
+            this.indexBatchSize = properties.getIndexBatchSize();
+            this.asyncBufferFlushTimeout = (int) properties.getAsyncBufferFlushTimeout()
+                .getSeconds();
+            this.properties = properties;
 
-        this.objectMapper = objectMapper;
-        this.openSearchAdminClient = restClientBuilder.build();
-        this.openSearchClient = new RestHighLevelClient(restClientBuilder);
-        this.clusterHealthColor = properties.getClusterHealthColor();
-        this.bulkRequests = new ConcurrentHashMap<>();
-        this.indexBatchSize = properties.getIndexBatchSize();
-        this.asyncBufferFlushTimeout = (int) properties.getAsyncBufferFlushTimeout().getSeconds();
-        this.properties = properties;
+            this.indexPrefix = properties.getIndexPrefix();
 
-        this.indexPrefix = properties.getIndexPrefix();
+            this.workflowIndexName = getIndexName(WORKFLOW_DOC_TYPE);
+            this.taskIndexName = getIndexName(TASK_DOC_TYPE);
+            this.logIndexPrefix = this.indexPrefix + "_" + LOG_DOC_TYPE;
+            this.messageIndexPrefix = this.indexPrefix + "_" + MSG_DOC_TYPE;
+            this.eventIndexPrefix = this.indexPrefix + "_" + EVENT_DOC_TYPE;
+            int workerQueueSize = properties.getAsyncWorkerQueueSize();
+            int maximumPoolSize = properties.getAsyncMaxPoolSize();
 
-        this.workflowIndexName = getIndexName(WORKFLOW_DOC_TYPE);
-        this.taskIndexName = getIndexName(TASK_DOC_TYPE);
-        this.logIndexPrefix = this.indexPrefix + "_" + LOG_DOC_TYPE;
-        this.messageIndexPrefix = this.indexPrefix + "_" + MSG_DOC_TYPE;
-        this.eventIndexPrefix = this.indexPrefix + "_" + EVENT_DOC_TYPE;
-        int workerQueueSize = properties.getAsyncWorkerQueueSize();
-        int maximumPoolSize = properties.getAsyncMaxPoolSize();
-
-        // Set up a workerpool for performing async operations.
-        this.executorService =
+            // Set up a workerpool for performing async operations.
+            this.executorService =
                 new ThreadPoolExecutor(
-                        CORE_POOL_SIZE,
-                        maximumPoolSize,
-                        KEEP_ALIVE_TIME,
-                        TimeUnit.MINUTES,
-                        new LinkedBlockingQueue<>(workerQueueSize),
-                        (runnable, executor) -> {
-                            logger.warn(
-                                    "Request  {} to async dao discarded in executor {}",
-                                    runnable,
-                                    executor);
-                            Monitors.recordDiscardedIndexingCount("indexQueue");
-                        });
+                    CORE_POOL_SIZE,
+                    maximumPoolSize,
+                    KEEP_ALIVE_TIME,
+                    TimeUnit.MINUTES,
+                    new LinkedBlockingQueue<>(workerQueueSize),
+                    (runnable, executor) -> {
+                        logger.warn(
+                            "Request  {} to async dao discarded in executor {}",
+                            runnable,
+                            executor);
+                        Monitors.recordDiscardedIndexingCount("indexQueue");
+                    });
 
-        // Set up a workerpool for performing async operations for task_logs, event_executions,
-        // message
-        int corePoolSize = 1;
-        maximumPoolSize = 2;
-        long keepAliveTime = 30L;
-        this.logExecutorService =
+            // Set up a workerpool for performing async operations for task_logs, event_executions,
+            // message
+            int corePoolSize = 1;
+            maximumPoolSize = 2;
+            long keepAliveTime = 30L;
+            this.logExecutorService =
                 new ThreadPoolExecutor(
-                        corePoolSize,
-                        maximumPoolSize,
-                        keepAliveTime,
-                        TimeUnit.SECONDS,
-                        new LinkedBlockingQueue<>(workerQueueSize),
-                        (runnable, executor) -> {
-                            logger.warn(
-                                    "Request {} to async log dao discarded in executor {}",
-                                    runnable,
-                                    executor);
-                            Monitors.recordDiscardedIndexingCount("logQueue");
-                        });
+                    corePoolSize,
+                    maximumPoolSize,
+                    keepAliveTime,
+                    TimeUnit.SECONDS,
+                    new LinkedBlockingQueue<>(workerQueueSize),
+                    (runnable, executor) -> {
+                        logger.warn(
+                            "Request {} to async log dao discarded in executor {}",
+                            runnable,
+                            executor);
+                        Monitors.recordDiscardedIndexingCount("logQueue");
+                    });
 
-        Executors.newSingleThreadScheduledExecutor()
+            Executors.newSingleThreadScheduledExecutor()
                 .scheduleAtFixedRate(this::flushBulkRequests, 60, 30, TimeUnit.SECONDS);
-        this.retryTemplate = retryTemplate;
+            this.retryTemplate = retryTemplate;
+        } catch(Exception e) {
+            logger.error("OpenSearch Initialization Failed: ", e);
+            throw e;
+        }
     }
 
     @PreDestroy

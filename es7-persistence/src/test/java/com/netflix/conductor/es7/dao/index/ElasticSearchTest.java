@@ -22,6 +22,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
+import org.testcontainers.utility.DockerImageName;
 
 import com.netflix.conductor.common.config.TestObjectMapperConfiguration;
 import com.netflix.conductor.es7.config.ElasticSearchProperties;
@@ -45,10 +46,9 @@ public abstract class ElasticSearchTest {
     }
 
     protected static final ElasticsearchContainer container =
-            new ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:7.17.16")
-                    .withEnv("discovery.type", "single-node")
-                    .withEnv("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
-                    .withExposedPorts(9200);
+            new ElasticsearchContainer(
+                    DockerImageName.parse("elasticsearch")
+                            .withTag("7.17.16")); // this should match the client version
 
     @Autowired protected ObjectMapper objectMapper;
 

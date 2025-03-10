@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
+import org.testcontainers.utility.DockerImageName;
 
 import com.netflix.conductor.common.metadata.events.EventHandler;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
@@ -62,11 +63,10 @@ public abstract class AbstractEndToEndTest {
     private static final String DEFAULT_NULL_VALUE = "null";
     protected static final String DEFAULT_EMAIL_ADDRESS = "test@harness.com";
 
-    protected static final ElasticsearchContainer container =
-            new ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:7.17.16")
-                    .withEnv("discovery.type", "single-node")
-                    .withEnv("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
-                    .withExposedPorts(9200); // this should match the client version
+    private static final ElasticsearchContainer container =
+            new ElasticsearchContainer(
+                    DockerImageName.parse("elasticsearch")
+                            .withTag("7.17.16")); // this should match the client version
 
     private static RestClient restClient;
 

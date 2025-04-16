@@ -1,0 +1,61 @@
+#
+# conductor:server - Netflix conductor server
+#
+
+# ===========================================================================================================
+# 0. Builder stage
+# ===========================================================================================================
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:17 AS builder
+
+LABEL maintainer="Netflix OSS <conductor@netflix.com>"
+
+# Copy the project directly onto the image
+COPY . /integration-platform-conductor
+WORKDIR /integration-platform-conductor
+
+# Build the server on run
+RUN ./gradlew build -x test --stacktrace
+
+# Debugging: List files in the build/libs directory to verify the .jar file
+RUN echo "Checking contents of build/libs:" && ls -l /integration-platform-conductor/server/build/libs/
+RUN echo "Checking contents of bin:" && ls -l /integration-platform-conductor/docker/server/bin/
+RUN echo "Checking contents of config:" && ls -l /integration-platform-conductor/docker/server/config/
+
+# ===========================================================================================================
+# 1. Bin stage
+# ===========================================================================================================
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:17
+
+LABEL maintainer="Netflix OSS <conductor@netflix.com>"
+ENV OPENTELEMETRY_JAR_FILE opentelemetry-javaagent-1.32.1.jar
+
+# Make app folders
+RUN mkdir -p /app/config /app/logs /app/libs
+
+# Copy the compiled output to new image
+COPY --from=builder /integration-platform-conductor/docker/server/bin /app
+COPY --from=builder /integration-platform-conductor/docker/server/config /app/config
+COPY --from=builder /integration-platform-conductor/server/build/libs/conductor-server*boot.jar /app/libs
+COPY --from=builder /integration-platform-conductor/server/build/libs/$OPENTELEMETRY_JAR_FILE /app/libs
+
+# Required Packages
+RUN yum install -y procps shadow-utils mysql screen nc wget
+#RUN yum install python3-pip python3-wheel python3-devel gcc -y
+#RUN pip3 install scylla-cqlsh
+
+# This Jar is used for profiling with java-agent
+RUN wget https://github.com/grafana/pyroscope-java/releases/download/v0.14.0/pyroscope.jar -P /app/libs
+
+# Creating a new user deploy with group id 3130 and name conductor
+RUN groupadd -g 3130 conductor \
+    && useradd --uid 3130 --home-dir /home/deploy --gid conductor --create-home --no-user-group deploy
+
+RUN chown -R deploy:conductor /app
+
+USER deploy:conductor
+
+#Using k8s readiness probe. So docker healthcheck not needed
+#HEALTHCHECK --interval=60s --timeout=30s --retries=10 CMD curl -I -XGET http://localhost:8080/health || exit 1
+
+CMD [ "/app/fsstartup.sh" ]
+ENTRYPOINT [ "/bin/sh"]

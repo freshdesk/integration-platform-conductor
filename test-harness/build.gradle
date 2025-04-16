@@ -42,3 +42,12 @@ dependencies {
     testImplementation "org.glassfish.jersey.core:jersey-common:${revJerseyCommon}"
     testImplementation "org.awaitility:awaitility:${revAwaitility}"
 }
+
+tasks.named('compileTestJava') {
+    // Declare that compileTestJava depends on downloadOTELJAR in conductor-server
+    dependsOn ':conductor-server:downloadOTELJAR'
+
+    // Ensure that compileTestJava runs after downloadOTELJAR task from conductor-server
+    mustRunAfter ':conductor-server:downloadOTELJAR'
+}
+

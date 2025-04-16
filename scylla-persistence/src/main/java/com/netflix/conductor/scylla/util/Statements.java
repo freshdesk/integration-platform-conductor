@@ -14,9 +14,46 @@ package com.netflix.conductor.scylla.util;
 
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 
-import static com.netflix.conductor.scylla.util.Constants.*;
+import static com.netflix.conductor.scylla.util.Constants.ENTITY_KEY;
+import static com.netflix.conductor.scylla.util.Constants.ENTITY_TYPE_TASK;
+import static com.netflix.conductor.scylla.util.Constants.ENTITY_TYPE_WORKFLOW;
+import static com.netflix.conductor.scylla.util.Constants.EVENT_EXECUTION_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.EVENT_HANDLER_KEY;
+import static com.netflix.conductor.scylla.util.Constants.EVENT_HANDLER_NAME_KEY;
+import static com.netflix.conductor.scylla.util.Constants.HANDLERS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.MESSAGE_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.PAYLOAD_KEY;
+import static com.netflix.conductor.scylla.util.Constants.SHARD_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_EVENT_EXECUTIONS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_EVENT_HANDLERS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_DEFS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_DEF_LIMIT;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_IN_PROGRESS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_IN_PROGRESS_V2;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_TASK_LOOKUP;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOWS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOW_DEFS;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOW_DEFS_INDEX;
+import static com.netflix.conductor.scylla.util.Constants.TABLE_WORKFLOW_LOOKUP;
+import static com.netflix.conductor.scylla.util.Constants.TASK_DEFINITION_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_DEFS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_DEF_NAME_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_IN_PROG_STATUS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TOTAL_PARTITIONS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TOTAL_TASKS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.VERSION;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEFINITION_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_INDEX_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_INDEX_VALUE;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_VERSION_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_VERSION_KEY;
 
-import static com.datastax.driver.core.querybuilder.QueryBuilder.*;
+import static com.datastax.driver.core.querybuilder.QueryBuilder.bindMarker;
+import static com.datastax.driver.core.querybuilder.QueryBuilder.eq;
+import static com.datastax.driver.core.querybuilder.QueryBuilder.set;
 
 // import com.datastax.oss.driver.api.querybuilder.QueryBuilder;
 
@@ -667,44 +704,6 @@ public class Statements {
                 .getQueryString();
     }
 
-    /**
-     * @return cql query statement to insert poll data into the "poll_data" table
-     */
-    public String getInsertPollDataStatement() {
-        return QueryBuilder.insertInto(keyspace, TABLE_POLL_DATA)
-                .value(TASK_DEF_NAME_KEY, bindMarker())
-                .value(DOMAIN_KEY, bindMarker())
-                .value(WORKER_ID_KEY, bindMarker())
-                .value(LAST_POLL_TIME_KEY, bindMarker())
-                .getQueryString();
-    }
-
-    /**
-     * @return cql query statement to retrieve all poll data by task Def Name from the "poll_data"
-     *     table
-     */
-    public String getSelectAllPollDataByTaskDefNameStatement() {
-        return QueryBuilder.select()
-                .all()
-                .from(keyspace, TABLE_POLL_DATA)
-                .where(eq(TASK_DEF_NAME_KEY, bindMarker()))
-                .getQueryString();
-    }
-
-    /**
-     * @return cql query statement to retrieve all poll data by task Def Name and domain from the
-     *     "poll_data" table
-     */
-    public String getSelectPollDataByTaskDefNameAndDomainStatement() {
-        return QueryBuilder.select()
-                .all()
-                .from(keyspace, TABLE_POLL_DATA)
-                .where(eq(TASK_DEF_NAME_KEY, bindMarker()))
-                .and(eq(DOMAIN_KEY, bindMarker()))
-                .limit(1)
-                .getQueryString();
-    }
-
     // Select Statements
 
     /**
@@ -729,6 +728,55 @@ public class Statements {
                 .from(keyspace, TABLE_EVENT_HANDLERS)
                 .where(eq(HANDLERS_KEY, HANDLERS_KEY))
                 .and(eq(EVENT_HANDLER_NAME_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    /**
+     * @return cql query statement to delete the task in task_in_progress_v2 table per taskDefName
+     *     and task_id
+     */
+    public String getDeleteTaskInProgressV2Statement() {
+        return QueryBuilder.delete()
+                .from(keyspace, TABLE_TASK_IN_PROGRESS_V2)
+                .where(eq(TASK_DEF_NAME_KEY, bindMarker()))
+                .and(eq(TASK_ID_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    /**
+     * @return cql query statement to update the task in task_in_progress_v2 table per taskDefName
+     *     and task_id
+     */
+    public String getUpdateTaskInProgressV2Statement() {
+        return QueryBuilder.update(keyspace, TABLE_TASK_IN_PROGRESS_V2)
+                .with(set(TASK_IN_PROG_STATUS_KEY, bindMarker()))
+                .where(eq(TASK_DEF_NAME_KEY, bindMarker()))
+                .and(eq(TASK_ID_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    /**
+     * @return cql query statement to retrieve all the tasks count from task_in_progress_v2 table
+     *     per taskDefName and task_id
+     */
+    public String getSelectTaskInProgressV2Statement() {
+        return QueryBuilder.select()
+                .countAll()
+                .from(keyspace, TABLE_TASK_IN_PROGRESS_V2)
+                .where(eq(TASK_DEF_NAME_KEY, bindMarker()))
+                .and(eq(TASK_ID_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    /**
+     * @return cql query statement to insert tasks to task_in_progress_v2 table
+     */
+    public String getInsertTaskInProgressV2Statement() {
+        return QueryBuilder.insertInto(keyspace, TABLE_TASK_IN_PROGRESS_V2)
+                .value(TASK_DEF_NAME_KEY, bindMarker())
+                .value(TASK_ID_KEY, bindMarker())
+                .value(WORKFLOW_ID_KEY, bindMarker())
+                .value(TASK_IN_PROG_STATUS_KEY, bindMarker())
                 .getQueryString();
     }
 }

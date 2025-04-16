@@ -20,16 +20,20 @@ dependencies {
     implementation project(':conductor-redis-lock')
     implementation "com.scylladb:scylla-driver-core:${revScylla}"
     implementation "org.apache.commons:commons-lang3"
-    implementation "javax.annotation:javax.annotation-api:1.3.2" //Needs to be added as a workaround for the generated tags
-
 
     testImplementation project(':conductor-core').sourceSets.test.output
     testImplementation project(':conductor-common').sourceSets.test.output
 
-    testImplementation "org.codehaus.groovy:groovy-all:${revGroovy}"
+    testImplementation "org.apache.groovy:groovy-all:${revGroovy}"
     testImplementation "org.spockframework:spock-core:${revSpock}"
     testImplementation "org.spockframework:spock-spring:${revSpock}"
     testImplementation "org.testcontainers:spock:${revTestContainer}"
     testImplementation "org.testcontainers:cassandra:${revTestContainer}"
     testImplementation "com.google.protobuf:protobuf-java:${revProtoBuf}"
+}
+
+test {
+    enabled = false
+    //the SQL unit tests must run within the same JVM to share the same embedded DB
+    maxParallelForks = 1
 }

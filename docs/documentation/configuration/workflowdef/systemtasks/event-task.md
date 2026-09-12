@@ -1,142 +1,65 @@
-# Event Task
+---
+description: EVENT system task inputs, payload, sink expansion, and asynchronous completion behavior.
+---
 
-```json
-"type" : "EVENT"
-```
+# Publish events with the Event task
 
-The `EVENT` task type in Conductor is used to publish events to supported eventing systems. It enables event-based dependencies within workflows and tasks, making it possible to trigger external systems like SQS, NATS, or AMQP as part of the workflow execution.
+`EVENT` publishes a JSON message through a registered event-queue provider. It is the generic publishing task: use [`KAFKA_PUBLISH`](kafka-publish-task.md) when the message contract needs Kafka-specific keys, headers, serializers, or producer controls.
 
-## Use Cases 
-An EVENT task can be configured to send an event to an external system at any specified point in a workflow, enabling integration with event-based dependencies.
+## Task parameters
 
-## Supported Queuing Systems
-Conductor supports the following queuing systems for EVENT tasks:
+| Parameter | Required | Behavior |
+|---|---|---|
+| `sink` | Yes | `provider:<provider-specific destination>`; expressions resolve at runtime |
+| `inputParameters` | No | User payload fields |
+| `asyncComplete` | No | Defaults to `false`; when true the task remains `IN_PROGRESS` after publish |
 
-1. Conductor internal events (prefix: `conductor`)
-2. SQS (prefix: `sqs`)
-3. NATS (prefix: `nats`)
-4. AMQP (prefix: `amqp_queue or amqp_exchange`)
+In OSS, registered provider identifiers are `conductor`, `kafka`, `sqs`, `nats`, `jsm`, `nats_stream`, `amqp_queue`, and `amqp_exchange`, subject to the corresponding server module being enabled. The provider owns the destination grammar after the first colon; for example, it might be a Kafka topic, an SQS queue URL, a NATS subject, or an AMQP queue/exchange.
 
+## Conductor sink expansion
 
-## Configuration
+- `conductor` becomes `conductor:<workflowName>:<taskReferenceName>`.
+- `conductor:<suffix>` becomes `conductor:<workflowName>:<suffix>`.
 
-| Attribute     | Description                                                                                                                                                                 |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| sink          | The sink specifies the target event queue in the format `prefix:location`, where the prefix denotes the queuing system (e.g., `conductor`, `sqs`, `nats`, or `amqp`/`amqp_exchange`), and the location represents the specific queue name (e.g., `send_email_queue`). |
-| asyncComplete | Setting `false` marks the status as COMPLETED upon execution, while setting `true` keeps the status IN_PROGRESS, awaiting completion from an external event.  |
+The event handler must listen on the expanded name.
 
-### Conductor Sink
-When producing an event with Conductor as a sink, the event name follows the structure:
-```conductor:<workflow_name>:<task_reference_name>```
+## Published payload and output
 
-When using Conductor as sink, you have two options: defining the sink as `conductor`, in which case the queue name will default to the taskReferenceName of the Event Task, or specifying the queue name in the sink as `conductor:<queue_name>`. The queue name is in the `event` value of the event Handler, as `conductor:<workflow_name>:<queue_name>`.
+The task begins with its resolved input parameters and adds workflow metadata:
 
-### SQS/NATS/AMQP Sink
-Use the **queue's name**, NOT the URI. Conductor looks up the URI based on the name.
+| Field | Value |
+|---|---|
+| `workflowInstanceId` | Parent workflow execution ID |
+| `workflowType` | Parent workflow name |
+| `workflowVersion` | Parent version |
+| `correlationId` | Parent correlation ID |
+| `taskToDomain` | Parent domain map |
 
-## Output
-Upon execution, the task’s output is sent to the external event queue. The payload contains:
+The task output also contains `event_produced`, the expanded sink. The published message is the task output without `event_produced`. The Event task uses its task ID as the broker message identity, so consumers can use that stable value for duplicate detection.
 
+## Completion behavior
 
-| name               | type    | description                           |
-| ------------------ | ------- | ------------------------------------- |
-| workflowInstanceId | String  | Workflow ID                           |
-| workflowType       | String  | Workflow Name                         |
-| workflowVersion    | Integer | Workflow Version                      |
-| correlationId      | String  | Workflow Correlation ID                |
-| sink               | String  | Copy of input data for "sink"        |
-| asyncComplete      | Boolean | Copy of input data for "asyncComplete” |
-| event_produced     | String  | Name of the event produced            |
+With `asyncComplete: false`, a successful publish completes the task. With `asyncComplete: true`, publishing succeeds but the task remains `IN_PROGRESS`; an external task update or an event-handler `complete_task`/`fail_task` action must resolve it.
 
-The published event's payload is identical to the task output (except "event_produced").
+## Example
 
-## Examples
-
-**Conductor Event:**
 ```json
 {
-    "type": "EVENT",
-    "sink": "conductor:internal_event_name",
-    "asyncComplete": false
+  "name": "publish_order_status",
+  "taskReferenceName": "publish_order_status",
+  "type": "EVENT",
+  "sink": "conductor:order-status",
+  "inputParameters": {
+    "orderId": "${workflow.input.orderId}",
+    "status": "READY"
+  },
+  "asyncComplete": false
 }
 ```
 
-**SQS Event:**
-```json
-{
-    "type": "EVENT",
-    "sink": "sqs:sqs_queue_name",
-    "asyncComplete": false
-}
-```
+For a practical first-use walkthrough, see [Publish events](../../../../devguide/how-tos/publish-events.md). Use [Event-Driven Orchestration](../../../../devguide/how-tos/event-bus.md) for the provider matrix, routing, webhooks, signals, and delivery observability.
 
-**NATS Event:**
-```json
-{
-
-   "type": "EVENT",
-
-   "sink": "nats:nats_queue_name",
-
-   "asyncComplete": false
-
-}
-```
-
-**AMQP Event:**
-```json
-{
-
-   "type": "EVENT",
-
-   "sink": "amqp:amqp_queue_name",
-
-   "asyncComplete": false
-
-}
-```
-
-## Event Queue Published Artifacts
-
-Group: `com.netflix.conductor`
-
-| Published Artifact              | Description                         |
-| ------------------------------- | ----------------------------------- |
-| conductor-amqp | Support for integration with AMQP |
-| conductor-nats | Support for integration with NATS | 
-
-### Modules
-
-#### AMQP
-
-Provides the capability to publish and consume messages from AMQP-compatible brokers.
-
-Configuration (default values shown below):
-
-```java
-conductor.event-queues.amqp.enabled=true
-conductor.event-queues.amqp.hosts=localhost
-conductor.event-queues.amqp.port=5672
-conductor.event-queues.amqp.username=guest
-conductor.event-queues.amqp.password=guest
-conductor.event-queues.amqp.virtualhost=/
-conductor.event-queues.amqp.useSslProtocol=false
-#milliseconds
-conductor.event-queues.amqp.connectionTimeout=60000
-conductor.event-queues.amqp.useExchange=true
-conductor.event-queues.amqp.listenerQueuePrefix=
-```
-
-#### NATS
-
-Provides the capability to publish and consume messages from NATS queues.
-
-Configuration (default values shown below):
-
-```java
-conductor.event-queues.nats.enabled=true
-conductor.event-queues.nats-stream.clusterId=test-cluster
-conductor.event-queues.nats-stream.durableName=
-conductor.event-queues.nats-stream.url=nats://localhost:4222
-conductor.event-queues.nats-stream.listenerQueuePrefix=
-```
+<a id="configuration-json"></a>
+<a id="conductor-sink-configuration"></a>
+<a id="output"></a>
+<a id="examples"></a>

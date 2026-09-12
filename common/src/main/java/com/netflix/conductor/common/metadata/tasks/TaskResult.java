@@ -26,6 +26,8 @@ import com.netflix.conductor.annotations.protogen.ProtoMessage;
 import com.google.protobuf.Any;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.constraints.NotEmpty;
+import lombok.Getter;
+import lombok.Setter;
 
 /** Result of the task execution. */
 @ProtoMessage
@@ -36,7 +38,8 @@ public class TaskResult {
         IN_PROGRESS,
         FAILED,
         FAILED_WITH_TERMINAL_ERROR,
-        COMPLETED
+        COMPLETED,
+        CANCELED
     }
 
     @NotEmpty(message = "Workflow Id cannot be null or empty")
@@ -66,13 +69,29 @@ public class TaskResult {
     @Hidden
     private Any outputMessage;
 
+    @ProtoField(id = 9)
+    private ExecutionMetadata executionMetadata;
+
+    @ProtoField(id = 10)
     private List<TaskExecLog> logs = new CopyOnWriteArrayList<>();
 
+    @ProtoField(id = 11)
     private String externalOutputPayloadStoragePath;
 
+    @ProtoField(id = 12)
     private String subWorkflowId;
 
+    @ProtoField(id = 13)
     private boolean extendLease;
+
+    @ProtoField(id = 14)
+    // If the task supports cancellation, used by external workers (requires SDK support) to signal
+    // the server
+    // That the task supports cancellation and sever can send update back for long-running tasks
+    // when they get canceled
+    // by the server events (workflow termination, timeouts etc)
+    // Workers are expected to handle this when set to cancel any long-running activity
+    private @Getter @Setter boolean supportsCancellation;
 
     public TaskResult(Task task) {
         this.workflowInstanceId = task.getWorkflowInstanceId();
@@ -81,10 +100,13 @@ public class TaskResult {
         this.callbackAfterSeconds = task.getCallbackAfterSeconds();
         this.workerId = task.getWorkerId();
         this.outputData = task.getOutputData();
+        // Only copy ExecutionMetadata if the task actually has one (to avoid creating empty ones)
+        if (task.hasExecutionMetadata()) {
+            this.executionMetadata = task.getExecutionMetadata();
+        }
         this.externalOutputPayloadStoragePath = task.getExternalOutputPayloadStoragePath();
         this.subWorkflowId = task.getSubWorkflowId();
         switch (task.getStatus()) {
-            case CANCELED:
             case COMPLETED_WITH_ERRORS:
             case TIMED_OUT:
             case SKIPPED:
@@ -170,8 +192,8 @@ public class TaskResult {
      *     <p><b>IN_PROGRESS</b>: Use this for long running tasks, indicating the task is still in
      *     progress and should be checked again at a later time. e.g. the worker checks the status
      *     of the job in the DB, while the job is being executed by another process.
-     *     <p><b>FAILED, FAILED_WITH_TERMINAL_ERROR, COMPLETED</b>: Terminal statuses for the task.
-     *     Use FAILED_WITH_TERMINAL_ERROR when you do not want the task to be retried.
+     *     <p><b>FAILED, FAILED_WITH_TERMINAL_ERROR, COMPLETED, CANCELED</b>: Terminal statuses for
+     *     the task. Use FAILED_WITH_TERMINAL_ERROR when you do not want the task to be retried.
      * @see #setCallbackAfterSeconds(long)
      */
     public void setStatus(Status status) {
@@ -263,6 +285,35 @@ public class TaskResult {
         this.extendLease = extendLease;
     }
 
+    /**
+     * @return the execution metadata containing timing, worker context, and other operational data.
+     *     Returns null if no execution metadata has been explicitly set or used.
+     */
+    public ExecutionMetadata getExecutionMetadata() {
+        // Only return ExecutionMetadata if it exists and has data
+        if (executionMetadata != null && executionMetadata.hasData()) {
+            return executionMetadata;
+        }
+        return null;
+    }
+
+    /**
+     * @return the execution metadata, creating it if it doesn't exist (for setting timing data)
+     */
+    public ExecutionMetadata getOrCreateExecutionMetadata() {
+        if (executionMetadata == null) {
+            executionMetadata = new ExecutionMetadata();
+        }
+        return executionMetadata;
+    }
+
+    /**
+     * @param executionMetadata the execution metadata to set
+     */
+    public void setExecutionMetadata(ExecutionMetadata executionMetadata) {
+        this.executionMetadata = executionMetadata;
+    }
+
     @Override
     public String toString() {
         return "TaskResult{"
@@ -288,6 +339,8 @@ public class TaskResult {
                 + outputMessage
                 + ", logs="
                 + logs
+                + ", executionMetadata="
+                + executionMetadata
                 + ", externalOutputPayloadStoragePath='"
                 + externalOutputPayloadStoragePath
                 + '\''

@@ -23,6 +23,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpStatus;
 import org.apache.http.entity.ContentType;
@@ -38,6 +40,7 @@ import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.*;
 import org.elasticsearch.client.core.CountRequest;
@@ -45,10 +48,13 @@ import org.elasticsearch.client.core.CountResponse;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.script.Script;
+import org.elasticsearch.script.ScriptType;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.FieldSortBuilder;
+import org.elasticsearch.search.sort.ScriptSortBuilder;
 import org.elasticsearch.search.sort.SortOrder;
 import org.elasticsearch.xcontent.XContentType;
 import org.joda.time.DateTime;
@@ -121,7 +127,8 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
     private final RestClient elasticSearchAdminClient;
     private final ExecutorService executorService;
     private final ExecutorService logExecutorService;
-    private final ConcurrentHashMap<String, BulkRequests> bulkRequests;
+    private final ConcurrentHashMap<Pair<String, WriteRequest.RefreshPolicy>, BulkRequests>
+            bulkRequests;
     private final int indexBatchSize;
     private final int asyncBufferFlushTimeout;
     private final ElasticSearchProperties properties;
@@ -495,6 +502,9 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
                     new IndexRequest(workflowIndexName)
                             .id(workflowId)
                             .source(docBytes, XContentType.JSON);
+            if (properties.isWaitForIndexRefresh()) {
+                request.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
+            }
             elasticSearchClient.index(request, RequestOptions.DEFAULT);
             long endTime = Instant.now().toEpochMilli();
             logger.debug(
@@ -519,7 +529,11 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
             long startTime = Instant.now().toEpochMilli();
             String taskId = task.getTaskId();
 
-            indexObject(taskIndexName, TASK_DOC_TYPE, taskId, task);
+            WriteRequest.RefreshPolicy refreshPolicy =
+                    properties.isWaitForIndexRefresh()
+                            ? WriteRequest.RefreshPolicy.WAIT_UNTIL
+                            : null;
+            indexObject(taskIndexName, TASK_DOC_TYPE, taskId, task, refreshPolicy);
             long endTime = Instant.now().toEpochMilli();
             logger.debug(
                     "Time taken {} for  indexing task:{} in workflow: {}",
@@ -731,7 +745,7 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
                             + "."
                             + eventExecution.getId();
 
-            indexObject(eventIndexName, EVENT_DOC_TYPE, id, eventExecution);
+            indexObject(eventIndexName, EVENT_DOC_TYPE, id, eventExecution, null);
             long endTime = Instant.now().toEpochMilli();
             logger.debug(
                     "Time taken {} for indexing event execution: {}",
@@ -1054,19 +1068,7 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
         searchSourceBuilder.from(start);
         searchSourceBuilder.size(size);
 
-        if (sortOptions != null && !sortOptions.isEmpty()) {
-
-            for (String sortOption : sortOptions) {
-                SortOrder order = SortOrder.ASC;
-                String field = sortOption;
-                int index = sortOption.indexOf(":");
-                if (index > 0) {
-                    field = sortOption.substring(0, index);
-                    order = SortOrder.valueOf(sortOption.substring(index + 1));
-                }
-                searchSourceBuilder.sort(new FieldSortBuilder(field).order(order));
-            }
-        }
+        addSortOptions(searchSourceBuilder, sortOptions);
 
         // Generate the actual request to send to ES.
         SearchRequest searchRequest = new SearchRequest(indexName);
@@ -1097,19 +1099,7 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
             searchSourceBuilder.fetchSource(false);
         }
 
-        if (sortOptions != null && !sortOptions.isEmpty()) {
-
-            for (String sortOption : sortOptions) {
-                SortOrder order = SortOrder.ASC;
-                String field = sortOption;
-                int index = sortOption.indexOf(":");
-                if (index > 0) {
-                    field = sortOption.substring(0, index);
-                    order = SortOrder.valueOf(sortOption.substring(index + 1));
-                }
-                searchSourceBuilder.sort(new FieldSortBuilder(field).order(order));
-            }
-        }
+        addSortOptions(searchSourceBuilder, sortOptions);
 
         // Generate the actual request to send to ES.
         SearchRequest searchRequest = new SearchRequest(indexName);
@@ -1117,6 +1107,56 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
 
         SearchResponse response = elasticSearchClient.search(searchRequest, RequestOptions.DEFAULT);
         return mapSearchResult(response, idOnly, clazz);
+    }
+
+    /**
+     * Adds search ordering, including the internal agent hierarchy marker emitted by the workflow
+     * search resource. The script sorts a parent and its direct children on the same workflow-id
+     * key, then ranks the parent before children. It avoids an invalid field sort for the marker on
+     * Elasticsearch-backed deployments.
+     */
+    private static void addSortOptions(
+            SearchSourceBuilder searchSourceBuilder, List<String> sortOptions) {
+        if (sortOptions == null || sortOptions.isEmpty()) {
+            return;
+        }
+
+        for (String sortOption : sortOptions) {
+            SortOrder order = SortOrder.ASC;
+            String field = sortOption;
+            int index = sortOption.indexOf(":");
+            if (index > 0) {
+                field = sortOption.substring(0, index);
+                order = SortOrder.valueOf(sortOption.substring(index + 1));
+            }
+
+            if ("agentHierarchy".equals(field)) {
+                searchSourceBuilder.sort(
+                        new ScriptSortBuilder(
+                                        new Script(
+                                                ScriptType.INLINE,
+                                                "painless",
+                                                "doc['parentWorkflowId'].size() != 0 && "
+                                                        + "doc['parentWorkflowId'].value != '' ? "
+                                                        + "doc['parentWorkflowId'].value : "
+                                                        + "doc['workflowId'].value",
+                                                Collections.emptyMap()),
+                                        ScriptSortBuilder.ScriptSortType.STRING)
+                                .order(SortOrder.ASC));
+                searchSourceBuilder.sort(
+                        new ScriptSortBuilder(
+                                        new Script(
+                                                ScriptType.INLINE,
+                                                "painless",
+                                                "doc['parentWorkflowId'].size() != 0 && "
+                                                        + "doc['parentWorkflowId'].value != '' ? 1 : 0",
+                                                Collections.emptyMap()),
+                                        ScriptSortBuilder.ScriptSortType.NUMBER)
+                                .order(SortOrder.ASC));
+            } else {
+                searchSourceBuilder.sort(new FieldSortBuilder(field).order(order));
+            }
+        }
     }
 
     private <T> SearchResult<T> mapSearchResult(
@@ -1231,12 +1271,15 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
     }
 
     private void indexObject(final String index, final String docType, final Object doc) {
-        indexObject(index, docType, null, doc);
+        indexObject(index, docType, null, doc, null);
     }
 
     private void indexObject(
-            final String index, final String docType, final String docId, final Object doc) {
-
+            final String index,
+            final String docType,
+            final String docId,
+            final Object doc,
+            final WriteRequest.RefreshPolicy refreshPolicy) {
         byte[] docBytes;
         try {
             docBytes = objectMapper.writeValueAsBytes(doc);
@@ -1247,27 +1290,38 @@ public class ElasticSearchRestDAOV7 extends ElasticSearchBaseDAO implements Inde
         IndexRequest request = new IndexRequest(index);
         request.id(docId).source(docBytes, XContentType.JSON);
 
-        if (bulkRequests.get(docType) == null) {
-            bulkRequests.put(
-                    docType, new BulkRequests(System.currentTimeMillis(), new BulkRequest()));
+        Pair<String, WriteRequest.RefreshPolicy> requestKey =
+                new ImmutablePair<>(docType, refreshPolicy);
+        if (bulkRequests.get(requestKey) == null) {
+            BulkRequest bulkRequest = new BulkRequest();
+            Optional.ofNullable(requestKey.getRight()).map(bulkRequest::setRefreshPolicy);
+            bulkRequests.put(requestKey, new BulkRequests(System.currentTimeMillis(), bulkRequest));
         }
 
-        bulkRequests.get(docType).getBulkRequest().add(request);
-        if (bulkRequests.get(docType).getBulkRequest().numberOfActions() >= this.indexBatchSize) {
-            indexBulkRequest(docType);
+        bulkRequests.get(requestKey).getBulkRequest().add(request);
+        if (bulkRequests.get(requestKey).getBulkRequest().numberOfActions()
+                >= this.indexBatchSize) {
+            indexBulkRequest(requestKey);
         }
     }
 
-    private synchronized void indexBulkRequest(String docType) {
-        if (bulkRequests.get(docType).getBulkRequest() != null
-                && bulkRequests.get(docType).getBulkRequest().numberOfActions() > 0) {
-            synchronized (bulkRequests.get(docType).getBulkRequest()) {
+    private synchronized void indexBulkRequest(
+            Pair<String, WriteRequest.RefreshPolicy> requestKey) {
+        if (bulkRequests.get(requestKey).getBulkRequest() != null
+                && bulkRequests.get(requestKey).getBulkRequest().numberOfActions() > 0) {
+            synchronized (bulkRequests.get(requestKey).getBulkRequest()) {
                 indexWithRetry(
-                        bulkRequests.get(docType).getBulkRequest().get(),
-                        "Bulk Indexing " + docType,
-                        docType);
+                        bulkRequests.get(requestKey).getBulkRequest().get(),
+                        "Bulk Indexing "
+                                + requestKey.getLeft()
+                                + " with "
+                                + requestKey.getLeft()
+                                + " policy",
+                        requestKey.getLeft());
+                BulkRequest bulkRequest = new BulkRequest();
+                Optional.ofNullable(requestKey.getRight()).map(bulkRequest::setRefreshPolicy);
                 bulkRequests.put(
-                        docType, new BulkRequests(System.currentTimeMillis(), new BulkRequest()));
+                        requestKey, new BulkRequests(System.currentTimeMillis(), bulkRequest));
             }
         }
     }

@@ -12,10 +12,14 @@
  */
 package com.netflix.conductor.rest.controllers;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
+import org.conductoross.conductor.model.SignalResponse;
+import org.conductoross.conductor.model.WorkflowSignalReturnStrategy;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,6 +44,7 @@ import com.netflix.conductor.service.WorkflowService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import reactor.core.publisher.Mono;
 
 import static com.netflix.conductor.rest.config.RequestMappingConstants.TASKS;
 
@@ -78,11 +83,9 @@ public class TaskResource {
             @RequestParam(value = "domain", required = false) String domain,
             @RequestParam(value = "count", defaultValue = "1") int count,
             @RequestParam(value = "timeout", defaultValue = "100") int timeout) {
-        // for backwards compatibility with 2.x client which expects a 204 when no Task is found
-        return Optional.ofNullable(
-                        taskService.batchPoll(taskType, workerId, domain, count, timeout))
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.noContent().build());
+        List<Task> tasks = taskService.batchPoll(taskType, workerId, domain, count, timeout);
+        // Return empty list instead of 204 to avoid NPE in client libraries
+        return ResponseEntity.ok(tasks != null ? tasks : List.of());
     }
 
     @PostMapping(produces = TEXT_PLAIN_VALUE)
@@ -96,8 +99,13 @@ public class TaskResource {
     @Operation(summary = "Update a task and return the next available task to be processed")
     public ResponseEntity<Task> updateTaskV2(@RequestBody @Valid TaskResult taskResult) {
         TaskModel updatedTask = taskService.updateTask(taskResult);
-        if (updatedTask == null) {
+        if (updatedTask == null || !updatedTask.getStatus().isTerminal()) {
             return ResponseEntity.noContent().build();
+        }
+        if (taskResult.isSupportsCancellation()
+                && updatedTask.getStatus() == TaskModel.Status.CANCELED) {
+            // TODO: Return cancelled task
+            // To be implemented in the future versions
         }
         String taskType = updatedTask.getTaskType();
         String domain = updatedTask.getDomain();
@@ -143,6 +151,48 @@ public class TaskResource {
         return workflowService.getExecutionStatus(pending.getWorkflowInstanceId(), true);
     }
 
+    @PostMapping(value = "/{workflowId}/{status}/signal", produces = APPLICATION_JSON_VALUE)
+    @Operation(
+            summary =
+                    "Signal the workflow's currently blocked task with the given status and output asynchronously")
+    public void signalWorkflowTaskAsync(
+            @PathVariable("workflowId") String workflowId,
+            @PathVariable("status") TaskResult.Status status,
+            @RequestBody Map<String, Object> output) {
+        taskService.signalTask(workflowId, status, output);
+    }
+
+    @PostMapping(value = "/{workflowId}/{status}/signal/sync", produces = APPLICATION_JSON_VALUE)
+    @Operation(
+            summary =
+                    "Signal the workflow's currently blocked task synchronously and return the updated workflow per the return strategy")
+    public Mono<SignalResponse> signalWorkflowTaskSync(
+            @PathVariable("workflowId") String workflowId,
+            @PathVariable("status") TaskResult.Status status,
+            @RequestParam(
+                            value = "returnStrategy",
+                            required = false,
+                            defaultValue = "TARGET_WORKFLOW")
+                    WorkflowSignalReturnStrategy returnStrategy,
+            @RequestParam(value = "timeoutMillis", required = false, defaultValue = "5000")
+                    long timeoutMillis,
+            @RequestBody Map<String, Object> output) {
+
+        String taskId = taskService.signalTask(workflowId, status, output);
+        if (taskId == null) {
+            throw new NotFoundException(
+                    String.format("Found no blocked task in workflow %s to signal", workflowId));
+        }
+
+        return WorkflowSignalResponder.awaitSignalResponse(
+                workflowService,
+                workflowId,
+                new String[0],
+                returnStrategy,
+                UUID.randomUUID().toString(),
+                Duration.ofMillis(timeoutMillis));
+    }
+
     @PostMapping("/{taskId}/log")
     @Operation(summary = "Log Task Execution Details")
     public void log(@PathVariable("taskId") String taskId, @RequestBody String log) {
@@ -151,8 +201,11 @@ public class TaskResource {
 
     @GetMapping("/{taskId}/log")
     @Operation(summary = "Get Task Execution Logs")
-    public List<TaskExecLog> getTaskLogs(@PathVariable("taskId") String taskId) {
-        return taskService.getTaskLogs(taskId);
+    public ResponseEntity<List<TaskExecLog>> getTaskLogs(@PathVariable("taskId") String taskId) {
+        return Optional.ofNullable(taskService.getTaskLogs(taskId))
+                .filter(logs -> !logs.isEmpty())
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.noContent().build());
     }
 
     @GetMapping("/{taskId}")
@@ -161,7 +214,7 @@ public class TaskResource {
         // for backwards compatibility with 2.x client which expects a 204 when no Task is found
         return Optional.ofNullable(taskService.getTask(taskId))
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.noContent().build());
+                .orElseThrow(() -> new NotFoundException("Task not found for taskId: %s", taskId));
     }
 
     @GetMapping("/queue/sizes")

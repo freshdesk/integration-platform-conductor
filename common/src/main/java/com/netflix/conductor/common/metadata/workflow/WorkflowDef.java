@@ -24,18 +24,19 @@ import com.netflix.conductor.common.metadata.Auditable;
 import com.netflix.conductor.common.metadata.SchemaDef;
 import com.netflix.conductor.common.metadata.tasks.TaskType;
 
-import jakarta.validation.*;
-import jakarta.validation.constraints.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 
 @ProtoMessage
 @TaskReferenceNameUniqueConstraint
 public class WorkflowDef extends Auditable {
 
-    @ProtoEnum
-    public enum TimeoutPolicy {
-        TIME_OUT_WF,
-        ALERT_ONLY
-    }
+    private static final String META_AGENT_SDK = "agent_sdk";
+    private static final String META_AGENT_DEF = "agentDef";
 
     @NotEmpty(message = "WorkflowDef name cannot be null or empty")
     @ProtoField(id = 1)
@@ -91,6 +92,9 @@ public class WorkflowDef extends Auditable {
     @ProtoField(id = 15)
     private Map<String, Object> inputTemplate = new HashMap<>();
 
+    @ProtoField(id = 16)
+    private Integer failureWorkflowVersion;
+
     @ProtoField(id = 17)
     private String workflowStatusListenerSink;
 
@@ -108,6 +112,16 @@ public class WorkflowDef extends Auditable {
 
     @ProtoField(id = 22)
     private Map<String, Object> metadata = new HashMap<>();
+
+    @ProtoField(id = 23)
+    private CacheConfig cacheConfig;
+
+    @ProtoField(id = 24)
+    private List<String> maskedFields = new ArrayList<>();
+
+    public static String getKey(String name, int version) {
+        return name + "." + version;
+    }
 
     public boolean isEnforceSchema() {
         return enforceSchema;
@@ -195,6 +209,13 @@ public class WorkflowDef extends Auditable {
     }
 
     /**
+     * @param version the version to set
+     */
+    public void setVersion(int version) {
+        this.version = version;
+    }
+
+    /**
      * @return the failureWorkflow
      */
     public String getFailureWorkflow() {
@@ -209,10 +230,21 @@ public class WorkflowDef extends Auditable {
     }
 
     /**
-     * @param version the version to set
+     * Failure workflow version
+     *
+     * @return failureWorkflowVersion
      */
-    public void setVersion(int version) {
-        this.version = version;
+    public Integer getFailureWorkflowVersion() {
+        return failureWorkflowVersion;
+    }
+
+    /**
+     * Sets the failure workflow version
+     *
+     * @param failureWorkflowVersion
+     */
+    public void setFailureWorkflowVersion(Integer failureWorkflowVersion) {
+        this.failureWorkflowVersion = failureWorkflowVersion;
     }
 
     /**
@@ -333,10 +365,6 @@ public class WorkflowDef extends Auditable {
         return getKey(name, version);
     }
 
-    public static String getKey(String name, int version) {
-        return name + "." + version;
-    }
-
     public String getWorkflowStatusListenerSink() {
         return workflowStatusListenerSink;
     }
@@ -375,6 +403,22 @@ public class WorkflowDef extends Auditable {
 
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata;
+    }
+
+    public CacheConfig getCacheConfig() {
+        return cacheConfig;
+    }
+
+    public void setCacheConfig(final CacheConfig cacheConfig) {
+        this.cacheConfig = cacheConfig;
+    }
+
+    public List<String> getMaskedFields() {
+        return maskedFields;
+    }
+
+    public void setMaskedFields(List<String> maskedFields) {
+        this.maskedFields = maskedFields;
     }
 
     public boolean containsType(String taskType) {
@@ -431,6 +475,47 @@ public class WorkflowDef extends Auditable {
         return tasks;
     }
 
+    /**
+     * Collects the unique names of all statically declared SIMPLE tasks in this workflow and any
+     * statically embedded inline sub-workflow definitions.
+     *
+     * <p>Runtime workflow-definition expressions are not available until execution and are
+     * intentionally skipped. Encounter order is retained, and identity-based cycle detection
+     * protects against reused or cyclic in-memory definitions.
+     */
+    public Set<String> collectSimpleTaskNames() {
+        Set<String> names = new LinkedHashSet<>();
+        Set<WorkflowDef> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        collectSimpleTaskNames(names, visited);
+        return names;
+    }
+
+    private void collectSimpleTaskNames(Set<String> names, Set<WorkflowDef> visited) {
+        if (!visited.add(this) || tasks == null) {
+            return;
+        }
+
+        for (WorkflowTask task : collectTasks()) {
+            if (TaskType.SIMPLE.name().equals(task.getType())) {
+                names.add(task.getName());
+            }
+
+            // Runtime expressions (for example "${compile.output.workflowDef}") are Strings and
+            // are deliberately skipped because their worker tasks do not exist until execution.
+            if (task.getSubWorkflowParam() != null
+                    && task.getSubWorkflowParam().getWorkflowDefinition()
+                            instanceof WorkflowDef nestedWorkflowDef) {
+                nestedWorkflowDef.collectSimpleTaskNames(names, visited);
+            }
+        }
+    }
+
+    @JsonIgnore
+    public boolean isAgent() {
+        return metadata != null
+                && (metadata.get(META_AGENT_SDK) != null || metadata.get(META_AGENT_DEF) != null);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -468,6 +553,8 @@ public class WorkflowDef extends Auditable {
                 + ", failureWorkflow='"
                 + failureWorkflow
                 + '\''
+                + ", failureWorkflowVersion="
+                + failureWorkflowVersion
                 + ", schemaVersion="
                 + schemaVersion
                 + ", restartable="
@@ -496,6 +583,14 @@ public class WorkflowDef extends Auditable {
                 + outputSchema
                 + ", enforceSchema="
                 + enforceSchema
+                + ", maskedFields="
+                + maskedFields
                 + '}';
+    }
+
+    @ProtoEnum
+    public enum TimeoutPolicy {
+        TIME_OUT_WF,
+        ALERT_ONLY
     }
 }
